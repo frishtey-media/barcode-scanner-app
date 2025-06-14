@@ -4,4 +4,4 @@ const nextConfig = {
     transpilePackages: ['html5-qrcode'],
 };
 
-module.exports = nextConfig;
+export default nextConfig;
