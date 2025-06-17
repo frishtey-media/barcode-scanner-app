@@ -4,72 +4,83 @@ import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
 export default function HomePage() {
-  const [barcode, setBarcode] = useState(null);
+  const [scannedData, setScannedData] = useState(null);
   const [status, setStatus] = useState('');
   const [showScanAgain, setShowScanAgain] = useState(false);
   const scannerRef = useRef(null);
+
   const scannerId = 'reader';
 
-  const startScanner = () => {
+  const startScan = async () => {
     setStatus('');
-    setBarcode(null);
+    setScannedData(null);
     setShowScanAgain(false);
 
     const html5QrCode = new Html5Qrcode(scannerId);
     scannerRef.current = html5QrCode;
 
-    html5QrCode.start(
-      { facingMode: 'environment' }, // rear camera
-      {
-        fps: 10,
-        qrbox: { width: 300, height: 200 },
-      },
-      async (decodedText, decodedResult) => {
-        // ✅ Immediately stop scanning
-        await html5QrCode.stop();
-        setBarcode(decodedText);
-        setStatus('Saving to Google Sheet...');
+    try {
+      const devices = await Html5Qrcode.getCameras();
 
-        try {
-          const res = await fetch('/api/store-barcode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ barcode: decodedText }),
-          });
+      if (devices && devices.length) {
+        const cameraId = devices[0].id;
 
-          const data = await res.json();
+        await html5QrCode.start(
+          cameraId,
+          {
+            fps: 10,
+            qrbox: { width: 300, height: 200 },
+          },
+          async (decodedText, decodedResult) => {
+            // ✅ Stop scanning immediately after detection
+            await html5QrCode.stop();
+            setScannedData(decodedText);
+            setStatus('Saving to Google Sheet...');
 
-          if (data.success) {
-            setStatus('✅ Saved successfully!');
-          } else {
-            setStatus(`❌ Failed: ${data.error}`);
+            try {
+              const response = await fetch('/api/store-barcode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ barcode: decodedText }),
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                setStatus('✅ Saved successfully!');
+              } else {
+                setStatus(`❌ Error: ${result.error}`);
+              }
+            } catch (error) {
+              setStatus(`❌ Error: ${error.message}`);
+            } finally {
+              setShowScanAgain(true);
+            }
+          },
+          (errorMessage) => {
+            // You can optionally log scan failure attempts
+            // console.warn("Scanning error:", errorMessage);
           }
-        } catch (err) {
-          setStatus(`❌ Error: ${err.message}`);
-        } finally {
-          setShowScanAgain(true);
-        }
-      },
-      (errorMessage) => {
-        // Optional: console.log('No barcode detected', errorMessage);
+        );
+      } else {
+        setStatus('❌ No cameras found.');
       }
-    );
+    } catch (err) {
+      setStatus(`❌ Error accessing camera: ${err.message}`);
+    }
   };
 
   const handleScanAgain = () => {
-    // Clean up previous scanner div
-    const readerElem = document.getElementById(scannerId);
-    if (readerElem) {
-      readerElem.innerHTML = '';
-    }
-    startScanner();
+    // Clear preview
+    const elem = document.getElementById(scannerId);
+    if (elem) elem.innerHTML = '';
+    startScan();
   };
 
   useEffect(() => {
-    startScanner();
+    startScan();
 
     return () => {
-      // Cleanup on unmount
+      // Stop scanner on unmount
       if (scannerRef.current) {
         scannerRef.current.stop().catch(() => { });
       }
@@ -79,13 +90,9 @@ export default function HomePage() {
   return (
     <main style={{ padding: '2rem', textAlign: 'center' }}>
       <h1>📷 Barcode Scanner</h1>
-      <div id={scannerId} style={{ margin: 'auto', width: 'fit-content' }}></div>
+      <div id={scannerId} style={{ width: '300px', margin: 'auto' }}></div>
 
-      {barcode && (
-        <p>
-          <strong>Scanned:</strong> {barcode}
-        </p>
-      )}
+      {scannedData && <p><strong>Scanned:</strong> {scannedData}</p>}
       {status && <p>{status}</p>}
 
       {showScanAgain && (

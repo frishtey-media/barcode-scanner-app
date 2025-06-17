@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+scan-labels-0676f1d264bd.json
 
 # debug
 npm-debug.log*
